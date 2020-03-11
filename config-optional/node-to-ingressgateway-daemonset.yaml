@@ -112,13 +112,10 @@ spec:
           configMap:
             name: envoy-config
 
-#@overlay/match by=overlay.subset({"kind":"Service","metadata":{"name":"istio-ingressgateway"}})
+#@overlay/match by=overlay.subset({"spec":{"type":"LoadBalancer"}})
 ---
-#@overlay/remove
-apiVersion:
-#@overlay/remove
-kind:
-#@overlay/remove
-metadata:
-#@overlay/remove
 spec:
+  #@overlay/replace
+  type: ClusterIP
+  #@overlay/remove
+  externalTrafficPolicy: Local
