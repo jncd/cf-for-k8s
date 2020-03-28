@@ -725,3 +725,94 @@ jobs:
       params:
         build: cf-for-k8s-dockerfiles/ci/dockerfiles/cf-test-runner/
         push: true
+
+- name: validate-azure
+  serial: true
+  plan:
+  - in_parallel:
+    - get: cf-for-k8s-master
+    - get: weekly
+      trigger: true
+  - task: install-cf
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: relintdockerhubpushbot/cf-for-k8s-azure1
+      inputs:
+
+      outputs:
+      - name: env-metadata
+      params:
+        DNS_ROOT_DOMAIN: ((ci_k8s_root_domain))
+        DNS_ZONE_NAME: ((ci_k8s_dns_zone_name))
+      run:
+        path: /bin/bash
+        args:
+        - -ec
+        - |
+          export KUBECONFIG=kube-config.yml
+          cluster_name='azure-ci-test-cluster'
+          cluster_resource_group='azure-ci-test-resource-group'
+          az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
+          az account set --subscription '((relint_azure_subscription))' >/dev/null 2>&1
+          # az group create --name $cluster_resource_group --location westus >/dev/null 2>&1
+          # az aks create --resource-group $cluster_resource_group --name $cluster_name --node-count 5 --enable-addons monitoring --generate-ssh-keys --service-principal '((aks_cluster_creation_service_principal_username))' --client-secret '((aks_cluster_creation_service_principal_password))' >/dev/null 2>&1
+          az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name >/dev/null 2>&1
+
+          export DNS_DOMAIN="${cluster_name}.${DNS_ROOT_DOMAIN}"
+          cf-for-k8s-master/hack/confirm-network-policy.sh "${cluster_name}" '((ci_k8s_gcp_project_zone))'
+
+          echo "Generating install values..."
+          echo '((ci_k8s_gcp_service_account_json))' > gcp-service-account.json
+          cf-for-k8s-master/hack/generate-values.sh --cf-domain "${DNS_DOMAIN}" --gcr-service-account-json gcp-service-account.json > cf-install-values.yml
+
+          echo "Installing CF..."
+          cf-for-k8s-master/bin/install-cf.sh cf-install-values.yml
+
+          echo "Configuring DNS..."
+          cf-for-k8s-master/hack/update-gcp-dns.sh "${DNS_DOMAIN}" "${DNS_ZONE_NAME}"
+
+          bosh interpolate --path /cf_admin_password cf-install-values.yml > env-metadata/cf-admin-password.txt
+          echo "${DNS_DOMAIN}" > env-metadata/dns-domain.txt
+
+  - task: run-smoke-test
+    config:
+      <<: *common-test-config
+      inputs:
+      - name: cf-for-k8s-azure
+      - name: env-metadata
+      run:
+        path: /bin/sh
+        args:
+        - -ec
+        - |
+          DNS_DOMAIN=$(cat env-metadata/dns-domain.txt)
+          export SMOKE_TEST_API_ENDPOINT="https://api.${DNS_DOMAIN}"
+          export SMOKE_TEST_APPS_DOMAIN="${DNS_DOMAIN}"
+          export SMOKE_TEST_USERNAME=admin
+          export SMOKE_TEST_PASSWORD=$(cat env-metadata/cf-admin-password.txt)
+          export SMOKE_TEST_SKIP_SSL=true
+          cf-for-k8s-develop/hack/run-smoke-tests.sh
+
+  - task: delete-cf
+    config:
+      platform: linux
+      image_resource:
+        type: docker-image
+        source:
+          repository: relintdockerhubpushbot/cf-for-k8s-ci
+      run:
+        path: /bin/bash
+        args:
+        - -ec
+        - |
+          cluster_name='azure-ci-test-cluster'
+          export KUBECONFIG=kube-config.yml
+          cluster_resource_group='azure-ci-test-resource-group'
+          az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
+          az account set --subscription '((relint_azure_subscription))' >/dev/null 2>&1
+          az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name >/dev/null 2>&1
+
+          kapp delete -a cf --yes
