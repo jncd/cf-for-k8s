@@ -788,7 +788,7 @@ jobs:
           az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
           az account set --subscription '((relint_azure_subscription))' >/dev/null 2>&1
           # az group create --name $cluster_resource_group --location westus --network-plugin azure --network-policy azure >/dev/null 2>&1
-          # az aks create --resource-group $cluster_resource_group --name $cluster_name --node-count 5 --enable-addons monitoring --generate-ssh-keys --service-principal '((aks_cluster_creation_service_principal_username))' --client-secret '((aks_cluster_creation_service_principal_password))' >/dev/null 2>&1
+          # az aks create --resource-group $cluster_resource_group --name $cluster_name --node-count 5 --node-vm-size Standard_DS3_v2 --enable-addons monitoring --generate-ssh-keys --service-principal '((aks_cluster_creation_service_principal_username))' --client-secret '((aks_cluster_creation_service_principal_password))' >/dev/null 2>&1
           az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name --file $KUBECONFIG --overwrite-existing >/dev/null 2>&1
 
           export DNS_DOMAIN="${cluster_name}.${DNS_ROOT_DOMAIN}"
@@ -802,6 +802,8 @@ jobs:
           cf-for-k8s-master/bin/install-cf.sh cf-install-values.yml
 
           echo "Configuring DNS..."
+          echo '((ci_k8s_gcp_service_account_json))' > gcp-service-account.json
+          gcloud auth activate-service-account --key-file=gcp-service-account.json --project='((ci_k8s_gcp_project_name))' >/dev/null 2>&1
           cf-for-k8s-master/hack/update-gcp-dns.sh "${DNS_DOMAIN}" "${DNS_ZONE_NAME}"
 
           bosh interpolate --path /cf_admin_password cf-install-values.yml > env-metadata/cf-admin-password.txt
