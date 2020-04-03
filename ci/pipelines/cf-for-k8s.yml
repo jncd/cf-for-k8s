@@ -782,7 +782,7 @@ jobs:
         args:
         - -ec
         - |
-          export KUBECONFIG=$HOME/.kube/config
+          export KUBECONFIG=kube-config.yml
           cluster_name='azure-ci-test-cluster'
           cluster_resource_group='azure-ci-test-resource-group'
           az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
@@ -840,10 +840,10 @@ jobs:
         - |
           cluster_name='azure-ci-test-cluster'
           cluster_resource_group='azure-ci-test-resource-group'
-          export KUBECONFIG=$HOME/.kube/config
+          export KUBECONFIG=kube-config.yml
           az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
           az account set --subscription '((relint_azure_subscription))' >/dev/null 2>&1
-          az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name --overwrite-existing >/dev/null 2>&1
+          az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name --file $KUBECONFIG --overwrite-existing >/dev/null 2>&1
 
           echo "az aks delete --resource-group ${cluster_resource_group} --name ${cluster_name} --verbose -y >/dev/null 2>&1"
           echo "az group delete --name ${cluster_resource_group} --verbose -y"
