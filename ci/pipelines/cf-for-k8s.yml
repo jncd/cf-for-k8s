@@ -726,7 +726,7 @@ jobs:
         build: cf-for-k8s-dockerfiles/ci/dockerfiles/cf-test-runner/
         push: true
 
-- name: validate-azure
+- name: validate-azure-tst
   serial: true
   plan:
   - in_parallel:
@@ -739,7 +739,7 @@ jobs:
       image_resource:
         type: docker-image
         source:
-          repository: relintdockerhubpushbot/cf-for-k8s-azure1
+          repository: relintdockerhubpushbot/cf-for-k8s-azure
       inputs:
 
       outputs:
@@ -781,7 +781,6 @@ jobs:
     config:
       <<: *common-test-config
       inputs:
-      - name: cf-for-k8s-azure
       - name: env-metadata
       run:
         path: /bin/sh
@@ -796,23 +795,25 @@ jobs:
           export SMOKE_TEST_SKIP_SSL=true
           cf-for-k8s-develop/hack/run-smoke-tests.sh
 
-  - task: delete-cf
+  - task: delete-cluster
     config:
       platform: linux
       image_resource:
         type: docker-image
         source:
-          repository: relintdockerhubpushbot/cf-for-k8s-ci
+          repository: relintdockerhubpushbot/cf-for-k8s-azure
       run:
         path: /bin/bash
         args:
         - -ec
         - |
           cluster_name='azure-ci-test-cluster'
-          export KUBECONFIG=kube-config.yml
           cluster_resource_group='azure-ci-test-resource-group'
+          export KUBECONFIG=kube-config.yml
           az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
           az account set --subscription '((relint_azure_subscription))' >/dev/null 2>&1
           az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name >/dev/null 2>&1
 
-          kapp delete -a cf --yes
+          echo "az aks delete --resource-group ${cluster_resource_group} --name ${cluster_name} --verbose -y >/dev/null 2>&1"
+          echo "az group delete --name ${cluster_resource_group} --verbose -y"
+
