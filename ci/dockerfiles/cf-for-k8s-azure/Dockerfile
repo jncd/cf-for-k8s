@@ -1,7 +1,7 @@
-FROM ubuntu:bionic
+FROM google/cloud-sdk:slim
 
 RUN apt-get update && \
-    apt-get install -y git gcc wget curl
+    apt-get install -y git gcc wget curl jq google-cloud-sdk
 RUN apt-get install -y openssl && \
     curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
 RUN wget -O- https://k14s.io/install.sh | bash
@@ -11,5 +11,4 @@ RUN curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.15.7/b
 RUN curl -LO https://github.com/cloudfoundry/bosh-cli/releases/download/v6.2.1/bosh-cli-6.2.1-linux-amd64 && \
     chmod +x ./bosh-cli-6.2.1-linux-amd64 && \
     mv ./bosh-cli-6.2.1-linux-amd64 /usr/local/bin/bosh
-RUN apt-get install -y jq
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash

@@ -17,8 +17,12 @@ groups:
   - test-vendir-sync-on-cf-for-k8s-pr
 - name: docker-images
   jobs:
-  - build-cf-for-k8s-ci-image
+  - build-cf-for-k8s-ci-gcp-image
   - build-cf-test-runner-image
+  - build-cf-for-k8s-azure-image
+- name: wip-azure
+  jobs:
+  - validate-azure-tst
 
 resource_types:
 - name: pull-request
@@ -114,7 +118,7 @@ resources:
     disable_forks: false
     base_branch: develop
 
-- name: cf-for-k8s-ci-image
+- name: cf-for-k8s-ci-gcp-image
   type: docker-image
   icon: docker
   source:
@@ -128,6 +132,15 @@ resources:
   icon: docker
   source:
     repository: relintdockerhubpushbot/cf-test-runner
+    username: ((dockerhub.username))
+    password: ((dockerhub.password))
+    email: cf-release-integration+dockerhub-push-bot@pivotal.io
+
+- name: cf-for-k8s-azure-image
+  type: docker-image
+  icon: docker
+  source:
+    repository: relintdockerhubpushbot/cf-for-k8s-azure
     username: ((dockerhub.username))
     password: ((dockerhub.password))
     email: cf-release-integration+dockerhub-push-bot@pivotal.io
@@ -694,7 +707,7 @@ jobs:
         context: check-vendir-sync
 
 
-- name: build-cf-for-k8s-ci-image
+- name: build-cf-for-k8s-ci-gcp-image
   public: true
   plan:
   - timeout: 4h
@@ -706,7 +719,7 @@ jobs:
         trigger: true
       - get: k14s-io
         trigger: true
-    - put: cf-for-k8s-ci-image
+    - put: cf-for-k8s-ci-gcp-image
       params:
         build: cf-for-k8s-dockerfiles/ci/dockerfiles/cf-for-k8s-ci/
         push: true
@@ -726,6 +739,23 @@ jobs:
         build: cf-for-k8s-dockerfiles/ci/dockerfiles/cf-test-runner/
         push: true
 
+- name: build-cf-for-k8s-azure-image
+  public: true
+  plan:
+  - timeout: 4h
+    do:
+    - in_parallel:
+      - get: weekly
+        trigger: true
+      - get: cf-for-k8s-dockerfiles
+        trigger: true
+      - get: k14s-io
+        trigger: true
+    - put: cf-for-k8s-azure-image
+      params:
+        build: cf-for-k8s-dockerfiles/ci/dockerfiles/cf-for-k8s-azure/
+        push: true
+
 - name: validate-azure-tst
   serial: true
   plan:
@@ -741,7 +771,7 @@ jobs:
         source:
           repository: relintdockerhubpushbot/cf-for-k8s-azure
       inputs:
-
+        - name: cf-for-k8s-master
       outputs:
       - name: env-metadata
       params:
@@ -752,17 +782,17 @@ jobs:
         args:
         - -ec
         - |
-          export KUBECONFIG=kube-config.yml
+          export KUBECONFIG=$HOME/.kube/config
           cluster_name='azure-ci-test-cluster'
           cluster_resource_group='azure-ci-test-resource-group'
           az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
           az account set --subscription '((relint_azure_subscription))' >/dev/null 2>&1
-          # az group create --name $cluster_resource_group --location westus >/dev/null 2>&1
+          # az group create --name $cluster_resource_group --location westus --network-plugin azure --network-policy azure >/dev/null 2>&1
           # az aks create --resource-group $cluster_resource_group --name $cluster_name --node-count 5 --enable-addons monitoring --generate-ssh-keys --service-principal '((aks_cluster_creation_service_principal_username))' --client-secret '((aks_cluster_creation_service_principal_password))' >/dev/null 2>&1
-          az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name >/dev/null 2>&1
+          az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name --file $KUBECONFIG --overwrite-existing >/dev/null 2>&1
 
           export DNS_DOMAIN="${cluster_name}.${DNS_ROOT_DOMAIN}"
-          cf-for-k8s-master/hack/confirm-network-policy.sh "${cluster_name}" '((ci_k8s_gcp_project_zone))'
+          # cf-for-k8s-master/hack/confirm-network-policy.sh "${cluster_name}" '((ci_k8s_gcp_project_zone))'
 
           echo "Generating install values..."
           echo '((ci_k8s_gcp_service_account_json))' > gcp-service-account.json
@@ -781,6 +811,7 @@ jobs:
     config:
       <<: *common-test-config
       inputs:
+      - name: cf-for-k8s-master
       - name: env-metadata
       run:
         path: /bin/sh
@@ -793,7 +824,7 @@ jobs:
           export SMOKE_TEST_USERNAME=admin
           export SMOKE_TEST_PASSWORD=$(cat env-metadata/cf-admin-password.txt)
           export SMOKE_TEST_SKIP_SSL=true
-          cf-for-k8s-develop/hack/run-smoke-tests.sh
+          cf-for-k8s-master/hack/run-smoke-tests.sh
 
   - task: delete-cluster
     config:
@@ -809,10 +840,10 @@ jobs:
         - |
           cluster_name='azure-ci-test-cluster'
           cluster_resource_group='azure-ci-test-resource-group'
-          export KUBECONFIG=kube-config.yml
+          export KUBECONFIG=$HOME/.kube/config
           az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
           az account set --subscription '((relint_azure_subscription))' >/dev/null 2>&1
-          az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name >/dev/null 2>&1
+          az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name --overwrite-existing >/dev/null 2>&1
 
           echo "az aks delete --resource-group ${cluster_resource_group} --name ${cluster_name} --verbose -y >/dev/null 2>&1"
           echo "az group delete --name ${cluster_resource_group} --verbose -y"
