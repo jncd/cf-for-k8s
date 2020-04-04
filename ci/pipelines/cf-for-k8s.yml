@@ -5,10 +5,12 @@ groups:
   - test-vendir-sync-on-cf-for-k8s
   - validate-cf-for-k8s
   - release-validation-pool-manual
+  - validate-azure
 - name: stability-check
   jobs:
   - stability-test-cf-for-k8s
   - release-stability-pool-manual
+  - validate-azure
 - name: pr-checks
   jobs:
   - fail-prs-to-cf-for-k8s-master
@@ -20,9 +22,6 @@ groups:
   - build-cf-for-k8s-ci-gcp-image
   - build-cf-test-runner-image
   - build-cf-for-k8s-azure-image
-- name: wip-azure
-  jobs:
-  - validate-azure-tst
 
 resource_types:
 - name: pull-request
@@ -74,6 +73,14 @@ resources:
     start: 7:00 -0700
     stop: 7:30 -0700
     interval: 168h
+
+- name: thursday-am
+  type: time
+  icon: clock-outline
+  source:
+    start: 9:00 AM
+    stop: 10:00 AM
+    location: America/Los_Angeles
 
 - name: every-20-minutes
   type: time
@@ -756,14 +763,14 @@ jobs:
         build: cf-for-k8s-dockerfiles/ci/dockerfiles/cf-for-k8s-azure/
         push: true
 
-- name: validate-azure-tst
+- name: validate-azure
   serial: true
   plan:
   - in_parallel:
     - get: cf-for-k8s-master
-    - get: weekly
+    - get: thursday-am
       trigger: true
-  - task: install-cf
+  - task: create-cluster-install-cf
     config:
       platform: linux
       image_resource:
@@ -785,13 +792,19 @@ jobs:
           export KUBECONFIG=kube-config.yml
           cluster_name='azure-ci-test-cluster'
           cluster_resource_group='azure-ci-test-resource-group'
+          echo "Logging into azure..."
           az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
+          echo "Setting azure account subscription..."
           az account set --subscription '((relint_azure_subscription))' >/dev/null 2>&1
-          # az group create --name $cluster_resource_group --location westus --network-plugin azure --network-policy azure >/dev/null 2>&1
-          # az aks create --resource-group $cluster_resource_group --name $cluster_name --node-count 5 --node-vm-size Standard_DS3_v2 --enable-addons monitoring --generate-ssh-keys --service-principal '((aks_cluster_creation_service_principal_username))' --client-secret '((aks_cluster_creation_service_principal_password))' >/dev/null 2>&1
+          echo "Creating resource group..."
+          az group create --name $cluster_resource_group --location westus  >/dev/null 2>&1
+          echo "Creating AKS cluster..."
+          az aks create --resource-group $cluster_resource_group --name $cluster_name --node-count 5 --node-vm-size Standard_DS3_v2 --network-plugin azure --network-policy azure --enable-addons monitoring --generate-ssh-keys --service-principal '((aks_cluster_creation_service_principal_username))' --client-secret '((aks_cluster_creation_service_principal_password))' >/dev/null 2>&1
+          echo "Getting credentials..."
           az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name --file $KUBECONFIG --overwrite-existing >/dev/null 2>&1
 
           export DNS_DOMAIN="${cluster_name}.${DNS_ROOT_DOMAIN}"
+          #TODO, make this check work for AKS
           # cf-for-k8s-master/hack/confirm-network-policy.sh "${cluster_name}" '((ci_k8s_gcp_project_zone))'
 
           echo "Generating install values..."
@@ -843,10 +856,16 @@ jobs:
           cluster_name='azure-ci-test-cluster'
           cluster_resource_group='azure-ci-test-resource-group'
           export KUBECONFIG=kube-config.yml
+
+          echo "Logging into azure..."
           az login --service-principal --username '((aks_cluster_creation_service_principal_username))' --password '((aks_cluster_creation_service_principal_password))' --tenant '((aks_cluster_creation_tenant))' >/dev/null 2>&1
+          echo "Setting azure account subscription..."
           az account set --subscription '((relint_azure_subscription))' >/dev/null 2>&1
+          echo "Getting credentials..."
           az aks get-credentials --resource-group $cluster_resource_group --name $cluster_name --file $KUBECONFIG --overwrite-existing >/dev/null 2>&1
 
-          echo "az aks delete --resource-group ${cluster_resource_group} --name ${cluster_name} --verbose -y >/dev/null 2>&1"
-          echo "az group delete --name ${cluster_resource_group} --verbose -y"
-
+          echo "Deleting AKS cluster..."
+          az aks delete --resource-group ${cluster_resource_group} --name ${cluster_name} -y >/dev/null 2>&1
+          echo "Deleting resource group..."
+          az group delete --name ${cluster_resource_group} -y >/dev/null 2>&1
+          echo "Cluster cleanup complete."
