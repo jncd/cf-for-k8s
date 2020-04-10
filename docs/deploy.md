@@ -26,7 +26,7 @@ You need the following CLIs on your system to be able to run the script:
 > Make sure that your Kubernetes config (e.g, `~/.kube/config`) is pointing to the cluster you intend to deploy cf-for-k8s to.
 
 ### Kubernetes Cluster Requirements
-:exclamation: This project is in it's early stages of development and hence the resource requirements are subject to change in the future. This document and the release notes will be updated accordingly. :exclamation:
+:exclamation: This project is in its early stages of development and hence the resource requirements are subject to change in the future. This document and the release notes will be updated accordingly. :exclamation:
 
 To deploy cf-for-k8s as is, the cluster should:
 * be running version 1.14.x, 1.15.x, or 1.16.x
